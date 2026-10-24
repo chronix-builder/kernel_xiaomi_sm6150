@@ -1008,6 +1008,10 @@ And public attribution of xiaomi platforms(like F3 and so and)
 	quiet-therm-step {
 		disable-thermal-zone;
 	};
+
+	soc {
+		disable-thermal-zone;
+	};
 };
 
 &sdhc_2 {
