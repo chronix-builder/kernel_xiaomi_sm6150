@@ -194,11 +194,11 @@ unsigned int capacity_margin				= 1280;
 
 /* Migration margins */
 unsigned int sysctl_sched_capacity_margin_up[MAX_MARGIN_LEVELS] = {
-	[0 ... MAX_MARGIN_LEVELS - 1] = 1280
-}; /* ~20% margin */
+	[0 ... MAX_MARGIN_LEVELS - 1] = 1384
+}; /* ~26% margin */
 unsigned int sysctl_sched_capacity_margin_down[MAX_MARGIN_LEVELS] = {
-	[0 ... MAX_MARGIN_LEVELS - 1] = 1280
-}; /* ~20% margin */
+	[0 ... MAX_MARGIN_LEVELS - 1] = 2695
+}; /* ~62% margin */
 unsigned int sysctl_sched_capacity_margin_up_boosted[MAX_MARGIN_LEVELS] = {
 	[0 ... MAX_MARGIN_LEVELS-1] = 1280
 }; /* ~20% margin */
@@ -208,11 +208,11 @@ unsigned int sysctl_sched_capacity_margin_down_boosted[MAX_MARGIN_LEVELS] = {
 
 #if NR_CPUS == 8
 unsigned int sched_capacity_margin_up[NR_CPUS] = {
-	1280, 1280, 1280, 1280, 1280, 1280, 1280, 1078
-}; /* ~20% margin for small and big, 5% for big+ */
+	1384, 1384, 1384, 1384, 1384, 1384, 1384, 1078
+}; /* ~26% margin for small and big, 5% for big+ */
 unsigned int sched_capacity_margin_down[NR_CPUS] = {
-	[0 ... NR_CPUS-1] = 1280
-}; /* ~20% margin */
+	[0 ... NR_CPUS-1] = 2695
+}; /* ~62% margin */
 unsigned int sched_capacity_margin_up_boosted[NR_CPUS] = {
 	1280, 1280, 1280, 1280, 1280, 1280, 1280, 1078
 }; /* ~20% margin for small and big, 5% for big+ */
@@ -221,9 +221,9 @@ unsigned int sched_capacity_margin_down_boosted[NR_CPUS] = {
 }; /* not used for small cores, ~35% margin for big, ~20% margin for big+ */
 #else
 unsigned int sched_capacity_margin_up[NR_CPUS] = {
-	[0 ... NR_CPUS-1] = 1280}; /* ~20% margin */
+	[0 ... NR_CPUS-1] = 1384}; /* ~26% margin */
 unsigned int sched_capacity_margin_down[NR_CPUS] = {
-	[0 ... NR_CPUS-1] = 1280}; /* ~20% margin */
+	[0 ... NR_CPUS-1] = 2695}; /* ~62% margin */
 unsigned int sched_capacity_margin_up_boosted[NR_CPUS] = {
 	[0 ... NR_CPUS-1] = 1280}; /* ~20% margin */
 unsigned int sched_capacity_margin_down_boosted[NR_CPUS] = {
@@ -3849,10 +3849,21 @@ util_est_dequeue(struct cfs_rq *cfs_rq, struct task_struct *p, bool task_sleep)
 		return;
 
 	/*
+	 * Reset EWMA on utilization increases, the moving average is used only
+	 * to smooth utilization decreases.
+	 */
+	ue.enqueued = (task_util(p) | UTIL_AVG_UNCHANGED);
+	if (sched_feat(UTIL_EST_FASTUP)) {
+		if (ue.ewma < ue.enqueued) {
+			ue.ewma = ue.enqueued;
+			goto done;
+		}
+	}
+
+	/*
 	 * Skip update of task's estimated utilization when its EWMA is
 	 * already ~1% close to its last activation value.
 	 */
-	ue.enqueued = (task_util(p) | UTIL_AVG_UNCHANGED);
 	last_ewma_diff = ue.enqueued - ue.ewma;
 	if (within_margin(last_ewma_diff, (SCHED_CAPACITY_SCALE / 100)))
 		return;
@@ -3877,6 +3888,7 @@ util_est_dequeue(struct cfs_rq *cfs_rq, struct task_struct *p, bool task_sleep)
 	ue.ewma <<= UTIL_EST_WEIGHT_SHIFT;
 	ue.ewma  += last_ewma_diff;
 	ue.ewma >>= UTIL_EST_WEIGHT_SHIFT;
+done:
 	WRITE_ONCE(p->se.avg.util_est, ue);
 
 	trace_sched_util_est_task(p, &p->se.avg);
@@ -7292,7 +7304,7 @@ static int select_idle_cpu(struct task_struct *p, struct sched_domain *sd, int t
 static inline int __select_idle_sibling(struct task_struct *p, int prev, int target)
 {
 	struct sched_domain *sd;
-	int i;
+	int i, recent_used_cpu;
 
 	if (idle_cpu(target) && !cpu_isolated(target))
 		return target;
@@ -7303,6 +7315,21 @@ static inline int __select_idle_sibling(struct task_struct *p, int prev, int tar
 	if (prev != target && cpus_share_cache(prev, target) &&
 				idle_cpu(prev) && !cpu_isolated(prev))
 		return prev;
+
+	/* Check a recently used CPU as a potential idle candidate */
+	recent_used_cpu = p->recent_used_cpu;
+	if (recent_used_cpu != prev &&
+	    recent_used_cpu != target &&
+	    cpus_share_cache(recent_used_cpu, target) &&
+	    idle_cpu(recent_used_cpu) &&
+	    cpumask_test_cpu(p->recent_used_cpu, &p->cpus_allowed)) {
+		/*
+		 * Replace recent_used_cpu with prev as it is a potential
+		 * candidate for the next wake.
+		 */
+		p->recent_used_cpu = prev;
+		return recent_used_cpu;
+	}
 
 	sd = rcu_dereference(per_cpu(sd_llc, target));
 	if (!sd)
@@ -8526,9 +8553,12 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 
 	if (!sd) {
 pick_cpu:
-		if (sd_flag & SD_BALANCE_WAKE) /* XXX always ? */
+		if (sd_flag & SD_BALANCE_WAKE) { /* XXX always ? */
 			new_cpu = select_idle_sibling(p, prev_cpu, new_cpu);
 
+			if (want_affine)
+				current->recent_used_cpu = cpu;
+		}
 	} else {
 		if (energy_sd) {
 			/*
@@ -8870,12 +8900,7 @@ again:
 		set_next_entity(cfs_rq, se);
 	}
 
-	if (hrtick_enabled(rq))
-		hrtick_start_fair(rq, p);
-
-	update_misfit_status(p, rq);
-
-	return p;
+	goto done;
 simple:
 #endif
 
@@ -8888,6 +8913,16 @@ simple:
 	} while (cfs_rq);
 
 	p = task_of(se);
+
+done: __maybe_unused
+#ifdef CONFIG_SMP
+	/*
+	 * Move the next running task to the front of
+	 * the list, so our cfs_tasks list becomes MRU
+	 * one.
+	 */
+	list_move(&p->se.group_node, &rq->cfs_tasks);
+#endif
 
 	if (hrtick_enabled(rq))
 		hrtick_start_fair(rq, p);
@@ -9377,11 +9412,12 @@ static void detach_task(struct task_struct *p, struct lb_env *env)
  */
 static struct task_struct *detach_one_task(struct lb_env *env)
 {
-	struct task_struct *p, *n;
+	struct task_struct *p;
 
 	lockdep_assert_held(&env->src_rq->lock);
 
-	list_for_each_entry_safe(p, n, &env->src_rq->cfs_tasks, se.group_node) {
+	list_for_each_entry_reverse(p,
+			&env->src_rq->cfs_tasks, se.group_node) {
 		if (!can_migrate_task(p, env))
 			continue;
 
@@ -9435,7 +9471,7 @@ redo:
 		if (env->idle != CPU_NOT_IDLE && env->src_rq->nr_running <= 1)
 			break;
 
-		p = list_first_entry(tasks, struct task_struct, se.group_node);
+		p = list_last_entry(tasks, struct task_struct, se.group_node);
 
 		env->loop++;
 		/* We've more or less seen every task there is, call it quits */
@@ -9496,7 +9532,7 @@ next:
 		trace_sched_load_balance_skip_tasks(env->src_cpu, env->dst_cpu,
 				env->src_grp_type, p->pid, load, task_util(p),
 				cpumask_bits(&p->cpus_allowed)[0]);
-		list_move_tail(&p->se.group_node, tasks);
+		list_move(&p->se.group_node, tasks);
 	}
 
 	if (env->flags & (LBF_IGNORE_BIG_TASKS |
