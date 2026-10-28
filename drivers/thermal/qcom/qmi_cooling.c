@@ -278,11 +278,11 @@ static int qmi_set_cur_state(struct thermal_cooling_device *cdev,
 	if (!qmi_cdev)
 		return -EINVAL;
 
+	if (state > qmi_cdev->max_level)
+		return -EINVAL;
+
 	if (qmi_cdev->type == QMI_CDEV_MIN_LIMIT_TYPE)
 		return 0;
-
-	if (state > qmi_cdev->max_level)
-		state = qmi_cdev->max_level;
 
 	return qmi_set_cur_or_min_state(qmi_cdev, state);
 }
@@ -295,11 +295,11 @@ static int qmi_set_min_state(struct thermal_cooling_device *cdev,
 	if (!qmi_cdev)
 		return -EINVAL;
 
+	if (state > qmi_cdev->max_level)
+		return -EINVAL;
+
 	if (qmi_cdev->type == QMI_CDEV_MAX_LIMIT_TYPE)
 		return 0;
-
-	if (state > qmi_cdev->max_level)
-		state = qmi_cdev->max_level;
 
 	/* Convert state into QMI client expects for min state */
 	state = qmi_cdev->max_level - state;

@@ -101,7 +101,7 @@ static int rpm_smd_set_cur_state(struct thermal_cooling_device *cdev,
 	int ret = 0;
 
 	if (state > (RPM_SMD_TEMP_MAX_NR - 1))
-		state = RPM_SMD_TEMP_MAX_NR - 1;
+		return -EINVAL;
 
 	ret = rpm_smd_send_request_to_rpm(rpm_smd_dev, (unsigned int)state);
 	if (ret)
