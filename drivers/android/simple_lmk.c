@@ -507,32 +507,15 @@ static int simple_lmk_init_set(const char *val, const struct kernel_param *kp)
 	/* Convert totalram to KB */
 	i.totalram <<= (PAGE_SHIFT - 10);
 
-	/*
-	 * A round stops collecting victims once MIN_FREE_PAGES worth of
-	 * processes have been selected, so this target decides how far down
-	 * the adj list a single reclaim walks. The old values freed 192-224
-	 * MiB per round with at most 100-180 ms for the victims to die, which
-	 * is enough to exhaust the cached apps (adj 900+) and start pulling in
-	 * perceptible and service processes before reclaim settles, and lets
-	 * the next round begin while the previous victims are still tearing
-	 * down their address spaces. That is what users see as background
-	 * apps vanishing after a short while.
-	 *
-	 * Free less per round and give each round the Kconfig default 200 ms
-	 * to settle. If memory is still short afterwards the next critical
-	 * vmpressure event starts another round, and the OOM killer is left
-	 * untouched as the backstop, so this only makes each round less
-	 * destructive rather than moving the point at which we start killing.
-	 */
 	if (i.totalram > 6144 * 1024) {
-		slmk_minfree = 128;
-		slmk_timeout = 200;
+	  slmk_minfree = 192;
+	  slmk_timeout = 180;
 	} else if (i.totalram > 4096 * 1024) {
-		slmk_minfree = 160;
-		slmk_timeout = 200;
+	  slmk_minfree = 208;
+	  slmk_timeout = 150;
 	} else {
-		slmk_minfree = 192;
-		slmk_timeout = 200;
+	  slmk_minfree = 224;
+	  slmk_timeout = 100;
 	}
 
 	return 0;
