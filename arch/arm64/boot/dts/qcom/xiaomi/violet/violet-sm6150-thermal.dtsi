@@ -46,6 +46,45 @@
         };
     };
 
+    /*
+     * The BCL zones are useful for monitoring, but they used to pin the
+     * big cluster to its lowest cooling state as soon as the battery
+     * twitched. Keep the zones, drop the clamping: the CPU and PMIC
+     * thermal zones still look after the silicon.
+     */
+    pm6150-bcl-lvl0 {
+        cooling-maps {
+            vbat_cpu6 {
+                cooling-device = <&CPU6 0 0>;
+            };
+            vbat_cpu7 {
+                cooling-device = <&CPU7 0 0>;
+            };
+        };
+    };
+
+    pm6150-bcl-lvl1 {
+        cooling-maps {
+            ibat_cpu6 {
+                cooling-device = <&CPU6 0 0>;
+            };
+            ibat_cpu7 {
+                cooling-device = <&CPU7 0 0>;
+            };
+        };
+    };
+
+    pm6150-bcl-lvl2 {
+        cooling-maps {
+            ibat_cpu6 {
+                cooling-device = <&CPU6 0 0>;
+            };
+            ibat_cpu7 {
+                cooling-device = <&CPU7 0 0>;
+            };
+        };
+    };
+
     soc {
         disable-thermal-zone;
 
