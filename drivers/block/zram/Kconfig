@@ -65,14 +65,6 @@ config ZRAM_DEFAULT_COMP_ALGORITHM
 	  LZ4 offers much lower compression/decompression latency than LZO
 	  at a slightly lower compression ratio, which is usually the right
 	  trade-off for a swap device.
-config ZRAM_ENTROPY_THRESHOLD
-	int
-	depends on ZRAM && ZRAM_ENTROPY
-	default 100000
-	help
-	  Pages with entropy above ZRAM_ENTROPY_THRESHOLD will be stored
-	  uncompressed. The default value was chosen as a reasonable balance 
-	  between compression ratio and performance.
 
 config ZRAM_MULTI_COMP
 	bool "Enable multiple compression streams"
