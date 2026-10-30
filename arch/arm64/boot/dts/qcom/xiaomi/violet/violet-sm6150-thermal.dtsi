@@ -47,6 +47,8 @@
     };
 
     soc {
+        disable-thermal-zone;
+
         cooling-maps {
             /delete-node/ soc_cpu6;
         };
