@@ -66,7 +66,10 @@ static ssize_t pm_async_store(struct kobject *kobj, struct kobj_attribute *attr,
 {
 	unsigned long val;
 
-	if (kstrtoul(buf, 10, &val))
+	if (IS_ENABLED(CONFIG_ANDROID))
+                return n;
+
+        if (kstrtoul(buf, 10, &val))
 		return -EINVAL;
 
 	if (val > 1)
@@ -126,6 +129,9 @@ static ssize_t mem_sleep_store(struct kobject *kobj, struct kobj_attribute *attr
 {
 	suspend_state_t state;
 	int error;
+
+	/* Don't allow userspace to select s2idle */
+	return n;
 
 	error = pm_autosleep_lock();
 	if (error)
