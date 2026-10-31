@@ -1532,7 +1532,8 @@ static int drm_notifier_callback(struct notifier_block *self, unsigned long even
 		blank = *(int *)(msm_drm_event->data);
 		FTS_INFO("notifier tp event:%d, code:%d.", event, blank);
 		flush_workqueue(fts_data->ts_workqueue);
-		if (event == MSM_DRM_EARLY_EVENT_BLANK && blank == MSM_DRM_BLANK_POWERDOWN) {
+		if (event == MSM_DRM_EARLY_EVENT_BLANK && (blank == MSM_DRM_BLANK_POWERDOWN ||
+			blank == MSM_DRM_BLANK_LP1 || blank == MSM_DRM_BLANK_LP2)) {
 			FTS_INFO("touchpanel suspend by %s", blank == MSM_DRM_BLANK_POWERDOWN ? "blank" : "doze");
 			cancel_work_sync(&fts_data->resume_work);
 			fts_ts_suspend(ts_data->dev);
@@ -2486,7 +2487,6 @@ static struct i2c_driver fts_ts_driver = {
 
 #endif
 		.of_match_table=of_match_ptr(fts_dt_match),
-		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 	},
 	.id_table = fts_ts_id,
 };
