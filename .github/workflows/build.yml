@@ -1,0 +1,74 @@
+name: Snowy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  Snowy:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [KSU-AOSP, Non-KSU]
+
+    steps:
+      - name:  Checkout Code
+        uses: actions/checkout@v4
+
+      - name:  Prepare Environment
+        run: |
+          sudo ln -sf /usr/share/zoneinfo/Asia/Jakarta /etc/localtime
+          sudo apt update -y
+          sudo apt install -y bc cpio flex bison git python-is-python3 tar perl wget curl lz4 libssl-dev pkg-config
+
+          mkdir clang
+          cd clang
+          curl -LO https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman
+          chmod +x antman
+          ./antman -S
+          ./antman --patch=glibc
+          cd ..
+
+          echo "BUILD_TIME=$(TZ=Asia/Jakarta date '+%d%m%Y-%H%M')" >> "$GITHUB_ENV"
+          echo "BUILD_DATE=\"$(TZ=Asia/Jakarta date '+%b %d %Y')\"" >> "$GITHUB_ENV"
+          echo "BUILD_REF=${GITHUB_REF_NAME//\//-}" >> "$GITHUB_ENV"
+          echo "CLANG_PATH=$GITHUB_WORKSPACE/clang" >> "$GITHUB_ENV"
+
+      - name:  Setup NoMount
+        run: curl -LSs https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -
+
+      - name: Setup KernelSU
+        if: matrix.build_type == 'KSU-AOSP' 
+        run: curl -LSs https://raw.githubusercontent.com/manipvlator/KernelSU/refs/heads/main/kernel/setup.sh | bash -s main
+
+      - name:  Build Kernel
+        run: |
+          export PATH="$CLANG_PATH/bin:$PATH"
+          export KBUILD_BUILD_USER=Chronix
+          export KBUILD_BUILD_HOST=Snowy
+          export KBUILD_COMPILER_STRING="Neutron clang version 24.0.0"
+          export CFLAGS_EXTRA="-DBUILD_DATE=$BUILD_DATE"
+
+          make O=out ARCH=arm64 vendor/snowy_defconfig
+          make -j"$(nproc)" O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CC=clang LD=ld.lld \
+            CROSS_COMPILE=aarch64-linux-gnu-
+
+          mv out/.config out/snowy_defconfig.txt
+
+      - name: Upload Config
+        uses: actions/upload-artifact@v4
+        with:
+          name: configs-${{ matrix.build_type }}-${{ env.BUILD_TIME }}
+          path: out/snowy_defconfig.txt
+
+      - name:  Prepare AnyKernel3
+        run: |
+          git clone --depth=1 -b violet https://github.com/chronix-builder/Anykernel3.git AnyKernel3
+          cp out/arch/arm64/boot/{Image.gz,dtbo.img,dtb.img} AnyKernel3/
+          (cd AnyKernel3 && zip -r "../snowy_${{ matrix.build_type }}-${BUILD_REF}-${BUILD_TIME}.zip" . -x ".git/*")
+
+      - name:  Upload Flashable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: snowy_${{ matrix.build_type }}-${{ env.BUILD_REF }}-${{ env.BUILD_TIME }}
+          path: AnyKernel3/*
